@@ -6,11 +6,15 @@ open Fabulous.Core
 open Fabulous.DynamicViews
 open Xamarin.Forms
 
+open Reflective
+
 module App =
     type Model =
       { Count : int
         Step : int
-        TimerOn: bool }
+        TimerOn: bool
+        LoadedRefs: RefInfo list
+        }
 
     type Msg =
         | Increment
@@ -19,8 +23,9 @@ module App =
         | SetStep of int
         | TimerToggled of bool
         | TimedTick
+        | ShowRefs of RefInfo list
 
-    let initModel = { Count = 0; Step = 1; TimerOn=false }
+    let initModel = { Count = 0; Step = 1; TimerOn=false; LoadedRefs=List.empty}
 
     let init () = initModel, Cmd.none
 
@@ -36,6 +41,9 @@ module App =
         | Reset -> init ()
         | SetStep n -> { model with Step = n }, Cmd.none
         | TimerToggled on -> { model with TimerOn = on }, (if on then timerCmd else Cmd.none)
+        | ShowRefs refs ->
+            // let refs = Reflective.getRefsForScript (sprintf "%A" >> fError)
+            {model with LoadedRefs=refs}, Cmd.none
         | TimedTick ->
             if model.TimerOn then
                 { model with Count = model.Count + model.Step }, timerCmd
@@ -43,6 +51,19 @@ module App =
                 model, Cmd.none
 
     let view (model: Model) dispatch =
+        printfn "let the viewing begin"
+        let refGrid =
+            let rows = model.LoadedRefs.Length
+            let columns = 2
+            let children=
+                [
+                    for row in 0..rows - 1 do
+                    let lr = model.LoadedRefs.[row]
+                    yield View.Label(text=lr.Name).GridColumn(1).GridRow(row)
+                    yield View.TextCell(text=sprintf "%A" lr.Location).GridColumn(2).GridRow(row)
+                ]
+            printfn "Found %i children" children.Length
+            View.Grid(rowdefs=(model.LoadedRefs |> List.map(fun _ -> box "auto")), coldefs=[box "auto"; box "auto"], children=children)
         View.ContentPage(
           content = View.StackLayout(padding = 20.0, verticalOptions = LayoutOptions.Center,
             children = [
@@ -54,6 +75,8 @@ module App =
                 View.Slider(minimumMaximum = (0.0, 10.0), value = double model.Step, valueChanged = (fun args -> dispatch (SetStep (int (args.NewValue + 0.5)))), horizontalOptions = LayoutOptions.FillAndExpand)
                 View.Label(text = sprintf "Step size: %d" model.Step, horizontalOptions = LayoutOptions.Center)
                 View.Button(text = "Reset", horizontalOptions = LayoutOptions.Center, command = (fun () -> dispatch Reset), canExecute = (model <> initModel))
+                View.Button(text= "GetRefs", command = fun () -> Reflective.getRefs() |> List.ofSeq |> Msg.ShowRefs |> dispatch )
+                refGrid.MinimumHeightRequest 100.0
             ]))
 
     // Note, this declaration is needed if you enable LiveUpdate
